@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:TitleWindow title="Add New Node" xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" width="500"
+			   close="PopUpManager.removePopUp(this)"
+			   creationComplete="handleCreationComplete();" height="350" dropShadowVisible="false">
+	<s:layout>
+		<s:VerticalLayout horizontalAlign="left"/>
+	</s:layout>
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+		<mx:Validator id="vElement" required="true"  source="{txtElement}" property="text" trigger="{btnAdd}" triggerEvent="click"/>
+		<s:RadioButtonGroup id="nodeKind" itemClick="handleKind(event);"/>
+		<s:RadioButtonGroup id="nodePosition"/>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.ValidationResultEvent;
+			import mx.graphics.codec.PNGEncoder;
+			[Bindable]
+			public var newnode:XML;
+			private var pfunc:Function;
+			private var parentnode:XML;
+			[Bindable]
+			private var action:String="ADD";
+			import mx.managers.PopUpManager;
+			private function handleCreationComplete():void 
+			{
+				// Center the TitleWindow container 
+				// over the control that created it.
+				PopUpManager.centerPopUp(this);
+				txtElement.text=(action=="ADD")?newnode.localName():parentnode.localName();
+				setProperties();
+			}
+			private function handleKind(event:ItemClickEvent):void 
+			{
+				var nodeKind:String=event.currentTarget.selectedValue;
+				content.selectedIndex=nodeKind=="E"?0:1;
+				if(txtOther!=null)
+				{
+					setVSrc(nodeKind);//vElement.source=nodeKind=="E"?txtElement:txtOther;
+				}
+				else
+				{
+					callLater(setVSrc,[nodeKind]);
+				}
+				contentName.title=event.currentTarget.selection.label;
+			}
+			private function setVSrc(nodeKind:String):void
+			{
+				vElement.source=nodeKind=="E"?txtElement:txtOther;
+			}
+			public function initializeWin(pnode:XML,pfunction:Function=null,paction:String="ADD"):void
+			{
+				
+				parentnode=pnode;
+				pfunc=pfunction;
+				action=paction;
+				if(action=="ADD")
+				{
+					newnode= <NewElement/>;
+				}
+			}
+			private function addNode(event:Event):void 
+			{
+				if(vElement.validate().type!=ValidationResultEvent.VALID)
+				{
+					return;
+				}
+				if(nodeKind.selectedValue=="E")
+				{
+					if(txtElement.text.indexOf(" ")!=-1)
+					{
+						Alert.show("Invalid Xml node name!");
+						return;
+					}
+					else
+					{
+						if(action=="ADD")
+						{
+							newnode.setName(txtElement.text);
+//							newnode.@['ludoeditorlebel']=newnode.localName();
+							addToPosition(newnode);
+						}
+						else
+						{
+							parentnode.setName(txtElement.text);
+//							parentnode.@['ludoeditorlebel']=parentnode.localName();
+						}
+					}
+				}
+				else
+				{
+					switch(nodeKind.selectedValue)//do a lowercase
+					{
+						case "T":
+							//newnode=XML(txtOther.text);
+							addToPosition(txtOther.text);
+							break;
+						default:
+							break;
+					}
+					
+				}
+				if(pfunc!=null)
+				{
+					this.callLater(pfunc,[newnode,nodePosition.selectedValue=='C']);
+				}
+				close();
+			}
+			private function setProperties():void
+			{
+				switch(parentnode.nodeKind())//do a lowercase
+				{
+					case "text":
+						//cannot add a text
+						rdText.enabled=false;
+						rdChild.enabled=false;
+						break;
+					case "element":
+						if(parentnode.parent()==null)
+						{
+							//cannot add a text
+							rdChild.selected=true;
+							rdAfter.enabled=false;
+							rdBefore.enabled=false;
+						}
+						break;
+					default:
+						break;
+				}
+				if(action=="RENAME")
+				{
+					this.title="Rename Node";
+					//vNodeParam.enabled=false;
+					btnAdd.label="Rename";
+				}
+				else if(action=="PASTE")
+				{
+					this.title="Paste Node";
+					vNodeParam.enabled=false;
+					btnAdd.label="Paste";
+				}
+			}
+			private function closeNode(event:Event):void 
+			{
+				close();
+			}
+			private function addToPosition(node:*):void
+			{
+				if(nodePosition.selectedValue=="C")
+				{
+					parentnode.appendChild(node);
+					newnode=parentnode.children()[parentnode.children().length()-1];
+					newnode
+				}
+				else if(nodePosition.selectedValue=="B")
+				{
+					parentnode.parent().insertChildBefore(parentnode,node);
+				}
+				else if(nodePosition.selectedValue=="A")
+				{
+					parentnode.parent().insertChildAfter(parentnode,node);
+				}
+			}
+			private function close():void
+			{
+				this.dispatchEvent(new CloseEvent(CloseEvent.CLOSE));
+			}
+		]]>
+	</fx:Script>
+	<s:HGroup left="10" gap="1" verticalAlign="top" horizontalAlign="center" width="100%">
+	<s:VGroup left="10" id="vNodeParam" gap="1" verticalAlign="top" horizontalAlign="center" width="20%">
+	<s:Panel width="100%" title="Node Kind" dropShadowVisible="false">
+		<s:VGroup width="100%">
+			<s:RadioButton id="rdElement" value="E" label="Element" selected="true" groupName="nodeKind"/>
+			<s:RadioButton id="rdText" value="T" label="Text" groupName="nodeKind"/>
+			<!--
+			<s:RadioButton id="rdComment" value="C" label="Comment" groupName="nodeKind"/>
+			<s:RadioButton id="rdCDATA" value="D" label="CDATA" groupName="nodeKind"/>
+			<s:RadioButton id="rdProcess" value="P" label="Processing Instruction" groupName="nodeKind"/>
+			-->
+		</s:VGroup>
+	</s:Panel>
+	<s:Panel width="100%" title="Node Position" dropShadowVisible="false">
+		<s:VGroup width="100%">
+			<s:RadioButton id="rdBefore" value="B" label="Before" groupName="nodePosition"/>
+			<s:RadioButton id="rdAfter" value="A" label="After" selected="true" groupName="nodePosition"/>
+			<s:RadioButton id="rdChild" value="C" label="Child" groupName="nodePosition"/>
+		</s:VGroup>
+	</s:Panel>
+	</s:VGroup>
+	<s:Panel width="100%" id="contentName" title="Element" height="100%" dropShadowVisible="false">
+	<mx:ViewStack id="content" selectedIndex="0" width="100%" height="100%">
+		<s:NavigatorContent id="element" width="100%">
+			<s:VGroup left="10" right="10" top="10" bottom="10" gap="1" verticalAlign="top" horizontalAlign="left" width="100%" height="100%">
+			<s:TextInput id="txtElement" width="100%"/>
+			</s:VGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent id="other" width="100%">
+			<s:VGroup left="10" right="10" top="10" bottom="10" gap="1" verticalAlign="top" horizontalAlign="left" width="100%" height="100%">
+				<s:TextArea width="100%" height="100%" id="txtOther"/>
+			</s:VGroup>
+		</s:NavigatorContent>
+	</mx:ViewStack>
+	</s:Panel>
+	</s:HGroup>
+	<s:HGroup gap="10" horizontalAlign="center" verticalAlign="bottom" width="100%">
+		<s:Button id="btnAdd" label="Add" click="addNode(event)"/>
+		<!--
+		<s:Button id="btnRename" enabled="{action=='RENAME'}" click="addNode(event)" label="Update"/>
+		-->
+		<s:Button label="Cancel" click="closeNode(event)"  id="btnCancel"/>
+	</s:HGroup>
+</s:TitleWindow>

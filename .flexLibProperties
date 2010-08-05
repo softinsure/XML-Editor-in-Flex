@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<flexLibProperties includeAllClasses="true" version="3">
+  <includeClasses>
+    <classEntry path="org.ludo.components.xmleditor.ViewSource"/>
+    <classEntry path="org.ludo.components.xmleditor.BaseEditor"/>
+    <classEntry path="org.ludo.components.xmleditor.PopupEditor"/>
+  </includeClasses>
+  <includeResources/>
+  <namespaceManifests/>
+</flexLibProperties>

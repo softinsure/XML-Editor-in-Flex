@@ -1,0 +1,486 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:VGroup xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		  xmlns:s="library://ns.adobe.com/flex/spark" 
+		  xmlns:mx="library://ns.adobe.com/flex/mx" width="100%" height="100%" xmlns:base="org.ludo.components.base.*">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import flashx.textLayout.factory.TruncationOptions;
+			
+			import mx.controls.Alert;
+			import mx.core.FlexGlobals;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.events.TreeEvent;
+			import mx.managers.CursorManager;
+			import mx.managers.PopUpManager;
+			import mx.messaging.channels.StreamingAMFChannel;
+			import mx.utils.XMLUtil;
+			
+			[Bindable]
+			[Embed("assets/del.png")]
+			private var IconDel:Class;
+			
+			[Bindable]
+			[Embed("assets/add.png")]
+			private var IconAdd:Class;
+			
+			import spark.components.Application;
+			[Bindable]
+			public var selectedNode:XML;
+			[Bindable]
+			public var nodeAttributes:XML;
+			[Bindable]
+			public var treeXml:XML;
+			//private var unchangedXml:XML;
+			private var xmlToSave:XML;
+			private var copiedNode:XML;
+			[Bindable]
+			public var noBrowse:Boolean=false;
+
+			[Bindable]
+			public var popup:Boolean=false;
+
+			[Bindable]
+			public var editable:Boolean=true;
+			
+			[Bindable]
+			public var browsed:Boolean=false;
+			
+			private var attrCount:int=1;
+			private var refXmlFile:FileReference;
+			private function browseForFile(evt:Event):void
+			{
+				if(refXmlFile!=null){refXmlFile=null};
+				refXmlFile = new FileReference();
+				refXmlFile.addEventListener(Event.COMPLETE, frLoadFiles);
+				refXmlFile.addEventListener(Event.SELECT, frSelect);
+				refXmlFile.addEventListener(IOErrorEvent.IO_ERROR, frIOError);
+				refXmlFile.addEventListener(SecurityErrorEvent.SECURITY_ERROR, frSecError);
+				var fileFilter:FileFilter = new FileFilter("Files", "*.xml");
+				refXmlFile.browse([fileFilter]);
+			}
+			private function clearUpload(fr:FileReference):void
+			{
+				//refXmlFile.removeEventListener(ProgressEvent.PROGRESS, onUploadProgress);
+				fr.removeEventListener(Event.SELECT, frSelect);
+				fr.removeEventListener(Event.COMPLETE, frLoadFiles);
+				fr.removeEventListener(IOErrorEvent.IO_ERROR, frIOError);
+				fr.removeEventListener(SecurityErrorEvent.SECURITY_ERROR, frSecError);
+				//fr.cancel();
+			}
+			private function frSelect(evt:Event):void{
+				FileReference(evt.target).load();
+			}
+			private function frLoadFiles(evt:Event):void{
+				//var file:FileReference=FileReference(evt.target);
+				try
+				{
+					browsed=true;
+					loadXml(XML(FileReference(evt.target).data));
+				}
+				catch(e:Error){
+					Alert.show("Invalid Xml file!");
+				}
+				clearUpload(FileReference(evt.target));
+			}
+			private function frIOError(evt:IOErrorEvent):void{
+				Alert.show(evt.toString());
+				clearUpload(FileReference(evt.target));
+			}
+			private function frSecError(evt:SecurityErrorEvent):void{
+				Alert.show(evt.toString());    
+				clearUpload(FileReference(evt.target));
+			}										
+			
+			public function loadXml(xmlToEdit:XML):void
+			{
+//				unchangedXml=xmlToEdit.copy();
+				xmlToSave=xmlToEdit;
+				xmlToEdit.normalize();
+				treeXml=xmlToEdit.copy();
+				//savemainxml.enabled=true;
+				this.callLater(callLaterTree);
+			}
+			private function callLaterTree():void
+			{
+				savethefile.enabled=true;
+				viewsource.enabled=true;
+				viewnode.enabled=true;
+				pNodes.enabled=true;
+				xmltree.selectedIndex=0;
+				xmltree.validateNow();
+				changedNode(xmltree.selectedItem as XML);
+			}
+			//private function expandNode(item:Object,open:Boolean=true):void
+			private function expandNode(item:Object):void
+			{
+				xmltree.expandItem(item,true);
+			}
+			private function setAtributes(node:XML):void
+			{
+				txtnodevalue.text="";
+				//nodeComments=null;
+				var attributeXML:XML = new XML(<root/>);
+				//var commentsXML:XML = new XML(<root/>);
+				if(node.nodeKind() == "element")
+				{
+					attrCount=1;
+					pNodeValue.title="Text";
+					pAttribute.enabled=true;
+					pNodeValue.enabled=true
+					for each (var attribute : XML in node.@ * )
+					{
+						attributeXML.appendChild(XMLList(<node><name>{attribute.name()}</name><value>{attribute.toString()}</value></node>));
+					}
+					nodeAttributes=attributeXML;
+					for each (var childnode:XML in node.children())
+					{
+						if (childnode.nodeKind() == "text")
+						{
+							txtnodevalue.text=childnode.toString();
+							return;
+						}
+					}
+				}
+					//Alert.show(selectedNode.comments().toXMLString());
+				else if (node.nodeKind() == "text")
+				{
+					pNodeValue.title="Text";
+					pAttribute.enabled=false;
+					pNodeValue.enabled=true
+					txtnodevalue.text=node.toString();
+				}
+					//else if (node.nodeKind() == "comment")
+				else
+				{
+					var name:String=node.nodeKind();
+					pNodeValue.title=name+": not editable";
+					pAttribute.enabled=false;
+					pNodeValue.enabled=false
+					txtnodevalue.text=node;
+				}
+			}
+			private function addAttributes(event:Event):void
+			{
+				if(nodeAttributes!=null)
+				{
+					nodeAttributes.appendChild(XMLList(<node><name>name_{attrCount}</name><value>value</value></node>));
+					attrCount++;
+					attributes.selectedIndex=nodeAttributes.children().length()-1;
+				}
+			}
+			private function delAttributes(event:Event):void
+			{
+				if(nodeAttributes!=null && nodeAttributes.children().length()>0)
+				{
+					if(attributes.selectedIndex>=0)
+					{
+						delete nodeAttributes.children()[attributes.selectedIndex];
+					}
+				}
+			}
+			private function expandAll(event:Event):void
+			{
+				CursorManager.setBusyCursor();
+				xmltree.expandItem(xmltree.selectedItem,!xmltree.isItemOpen(xmltree.selectedItem));
+				CursorManager.removeBusyCursor();
+				expanded(xmltree.isItemOpen(xmltree.selectedItem));
+			}
+			private function saveFile(event:Event):void
+			{
+				var xmltoSave:XML=xmltree.changedXML;
+				var fname:String=xmltoSave.localName()+".xml";
+				if(refXmlFile==null)
+				{
+					refXmlFile=new FileReference();
+				}
+				else if(refXmlFile!=null)
+				{
+					fname=refXmlFile.name;
+				}
+				refXmlFile.save(xmltoSave,fname);
+			}
+			private function updAttributes(event:Event):void
+			{
+				
+				for each (var childnode:XML in nodeAttributes.children())
+				{
+					if(String(childnode.name).indexOf(" ")!=-1)
+					{
+						Alert.show("Invalid attribute name: '"+childnode.name+"'");
+						return;
+					}
+				}
+				for each (var attr:XML in selectedNode.@* )
+				{
+					delete selectedNode.@[attr.name()];
+				}
+				for each (var childnode2:XML in nodeAttributes.children())
+				{
+					selectedNode.@[childnode2.name]=childnode2.value;
+				}
+			}
+			private function updNodeVal(event:Event):void
+			{
+				if(selectedNode.nodeKind() == "text")
+				{
+					selectedNode.parent().children()[selectedNode.childIndex()]=txtnodevalue.text;
+				}
+					/* 				else if(selectedNode.nodeKind() == "comment")
+					{
+					}
+				*/				else if(selectedNode.nodeKind() == "element")
+				{
+					for each (var childnode:XML in selectedNode.children())
+					{
+						if (childnode.nodeKind() == "text")
+						{
+							selectedNode.parent().children()[selectedNode.childIndex()]=txtnodevalue.text;
+							return;
+						}
+					}
+					selectedNode.appendChild(XML(txtnodevalue.text));
+				}
+			}
+			private function addNode(event:Event):void
+			{
+				if(selectedNode!=null)
+				{
+					var nodeWin:AddNode=new AddNode();
+					nodeWin.initializeWin(selectedNode,nodeAdded);
+					PopUpManager.addPopUp(nodeWin,this,true);
+				}
+			}
+			private function viewSource(event:Event):void
+			{
+				if(treeXml!=null)
+				{
+					var nodeWin:ViewSource=new ViewSource();
+					nodeWin.source=treeXml.toXMLString();
+					PopUpManager.addPopUp(nodeWin,this,true);
+				}
+			}
+			private function viewNode(event:Event):void
+			{
+				if(selectedNode!=null)
+				{
+					var nodeWin:ViewSource=new ViewSource();
+					nodeWin.source=selectedNode.toXMLString();
+					PopUpManager.addPopUp(nodeWin,this,true);
+				}
+			}
+			private function renameNode(event:Event):void
+			{
+				if(selectedNode!=null)
+				{
+					var nodeWin:AddNode=new AddNode();
+					nodeWin.initializeWin(selectedNode,null,"RENAME");
+					PopUpManager.addPopUp(nodeWin,this,true);
+				}
+			}
+			private function delNode(event:Event):void
+			{
+				if(selectedNode!=null)
+				{
+					var pNode:XML=selectedNode.parent();
+					if(pNode==null)
+					{
+						Alert.show("Root node cannot be deleted!!");
+						return;
+					}
+					var idx:uint=selectedNode.childIndex();
+					delete pNode.children()[idx] ;
+					var clen:uint=pNode.children().length();
+					if(clen>0)
+					{
+						if(idx>=clen)
+						{
+							idx=clen-1;
+						}
+						xmltree.selectedItem=pNode.children()[idx];
+					}
+					else
+					{
+						xmltree.selectedItem=pNode;
+					}
+					changedNode(xmltree.selectedItem as XML);
+					xmltree.validateNow();
+				}
+			}
+			// Event handler for the Tree control change event.
+			private function changedNode(node:XML):void
+			{
+				selectedNode=node;
+				setAtributes(node);
+				if(node.nodeKind() == "element")
+				{
+					btnRenameNode.enabled=true;
+				}
+				else
+				{
+					btnRenameNode.enabled=false;
+				}
+				//savemainxml.enabled=true;
+				btnAddNode.enabled=true;
+				btnDelNode.enabled=true;
+				btnCopyNode.enabled=true;
+				expandNode(node);
+				setNodeInfo();
+			}
+			public function treeChanged(event:Event):void 
+			{
+				changedNode(XmlTree(event.target).selectedItem as XML);
+			}
+			public function nodeAdded(item:Object,asChild:Boolean=false):void
+			{
+				if(asChild)
+				{
+					expandNode(selectedNode);
+				}
+				xmltree.selectedItem=item;
+				changedNode(item as XML);
+			}
+			private function setNodeInfo():void
+			{
+				var nodeinfo:String="";
+				var nname:String=selectedNode.localName();
+				if(nname==null)
+				{
+					nodeinfo="Parent Node: ["+selectedNode.parent().localName()+"]";
+					pAttribute.title="Attributes of node ["+selectedNode.parent().localName()+"]";
+				}
+				else
+				{
+					nodeinfo="Selected Node: ["+nname+"]";
+					pAttribute.title="Attributes of node ["+nname+"]";
+				}
+				nodeinfo=nodeinfo+" Node type: ["+selectedNode.nodeKind()+"]";
+				pNodes.title=nodeinfo;
+				callLater(callLaterItemOpen);
+			}
+			private function callLaterItemOpen():void
+			{
+				expanded(xmltree.isItemOpen(xmltree.selectedItem));
+				
+			}
+			private function expanded(value:Boolean):void
+			{
+				expandall.label=!value?"Expand":"Collapse";
+			}
+			protected function xmltree_itemOpeningHandler(event:TreeEvent):void
+			{
+				if(xmltree.selectedItem!=event.item)
+				{
+					xmltree.selectedItem=event.item as XML;
+					changedNode(xmltree.selectedItem as XML);
+				}
+				else
+				{
+					expanded(event.opening);
+				}
+			}
+			protected function savexml_clickHandler(event:MouseEvent):void
+			{
+				xmlToSave=treeXml;
+				Alert.show("Xml has been saved successfully."); 
+			}
+			protected function reset_clickHandler(event:MouseEvent):void
+			{
+				xmltree.undo();
+				Alert.show("Xml has been reset to original successfully.");
+			}
+
+			protected function btnCopyNode_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				if(selectedNode!=null)
+				{
+					copiedNode=selectedNode.copy();
+					System.setClipboard(copiedNode.toXMLString());
+					btnPasteNode.enabled=true;
+				}
+			}
+			protected function btnPasteNode_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				if(selectedNode!=null && copiedNode!=null)
+				{
+					var nodeWin:AddNode=new AddNode();
+					nodeWin.initializeWin(selectedNode,null,"PASTE",copiedNode);
+					PopUpManager.addPopUp(nodeWin,this,true);
+				}
+			}
+
+
+			protected function copyToBoard_clickHandler(event:MouseEvent):void
+			{
+				// TODO Auto-generated method stub
+				System.setClipboard(treeXml.toXMLString());
+			}
+
+		]]>
+	</fx:Script>
+	<s:HGroup gap="1" width="100%">
+		<s:Button label="Browse" enabled="{!noBrowse}" click="browseForFile(event)" id="browseBtn"/>
+		<s:Button label="Save to File" enabled="{treeXml!=null}" click="saveFile(event)" id="savethefile"/>
+		<s:Button label="Save" enabled="{treeXml!=null &amp;&amp; editable}" click="savexml_clickHandler(event)" id="savexml"/>
+		<s:Button label="Reset" enabled="{treeXml!=null &amp;&amp; editable}" click="reset_clickHandler(event)" id="reset"/>
+		<s:Button label="Expand" enabled="{treeXml!=null}" click="expandAll(event)" id="expandall"/>
+		<s:Button label="View Source" enabled="{treeXml!=null}" click="viewSource(event)" id="viewsource"/>
+		<s:Button label="View Node " enabled="{treeXml!=null}" click="viewNode(event)" id="viewnode"/>
+		<s:Button label="Copy to Clipboard " enabled="{treeXml!=null}" click="copyToBoard_clickHandler(event)" id="copyToBoard"/>
+		<!--
+		<s:Button enabled="false" label="Save Xml" click="saveXml(event)" id="savemainxml"/>
+		-->
+	</s:HGroup>
+	<mx:HDividedBox width="100%" height="100%">
+		<s:Panel width="100%" enabled="false" id="pNodes" height="100%" title="Nodes" dropShadowVisible="false">
+			<s:VGroup width="100%" height="100%">
+				<base:XmlTree ineditor="true" itemOpening="xmltree_itemOpeningHandler(event)" width="100%" height="100%" change="treeChanged(event)" id="xmltree" dataProvider="{treeXml}"></base:XmlTree>
+				<s:HGroup visible="{editable}" gap="1" width="100%" >
+					<s:Button enabled="true" id="btnAddNode" click="addNode(event)" label="Add"/>
+					<s:Button enabled="false" id="btnRenameNode" click="renameNode(event)" label="Rename"/>
+					<s:Button enabled="false" label="Delete" click="delNode(event)" id="btnDelNode"/>
+					<s:Button enabled="false" label="Copy" click="btnCopyNode_clickHandler(event)" id="btnCopyNode"/>
+					<s:Button enabled="false" label="Paste" click="btnPasteNode_clickHandler(event)" id="btnPasteNode"/>
+				</s:HGroup>
+			</s:VGroup>
+		</s:Panel>
+		<s:VGroup width="100%" height="100%">
+			<s:Panel enabled="false" id="pAttribute" width="100%" height="50%" title="Attributes" dropShadowVisible="false">
+				<s:VGroup width="100%" height="100%">
+					<mx:DataGrid width="100%" dataProvider="{nodeAttributes.node}" editable="{editable}" height="100%" id="attributes">
+						<mx:columns>
+							<mx:DataGridColumn visible="{editable}" width="20" editable="false" itemRenderer="org.ludo.components.base.ButtonRenderer"/>
+							<mx:DataGridColumn headerText="Name" dataField="name"/>
+							<mx:DataGridColumn headerText="Value" dataField="value"/>
+						</mx:columns>
+					</mx:DataGrid>
+					<s:HGroup visible="{editable}" width="100%">
+						<s:HGroup width="100%" >
+							<!--<mx:Image id="addatr" click="addAttributes(event)" source="{IconAdd}"/>-->
+							<s:Button id="addatr" click="addAttributes(event)" label="Add"/>
+							<!--
+							<s:Button label="Delete" click="delAttributes(event)" id="delatr"/>
+							-->
+						</s:HGroup>
+						<s:VGroup width="100%" horizontalAlign="right">
+							<s:Button label="Update" click="updAttributes(event)" id="updatr"/>
+						</s:VGroup>
+					</s:HGroup>
+				</s:VGroup>
+			</s:Panel>
+			<s:Panel enabled="false" id="pNodeValue" width="100%" height="50%" title="Node Values" dropShadowVisible="false">
+				<s:VGroup width="100%" height="100%">
+					<s:TextArea width="100%" height="100%" editable="{editable}" id="txtnodevalue"/>
+					<s:VGroup width="100%" visible="{editable}" horizontalAlign="right">
+						<s:Button label="Update" click="updNodeVal(event)" id="updnodeval"/>
+					</s:VGroup>
+				</s:VGroup>
+			</s:Panel>
+		</s:VGroup>
+	</mx:HDividedBox>
+</s:VGroup>
